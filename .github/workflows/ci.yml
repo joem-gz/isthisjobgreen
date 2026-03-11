@@ -41,8 +41,8 @@ jobs:
         if: github.event_name != 'schedule'
         run: xvfb-run --auto-servernum -- npm run test:e2e -- tests/e2e/annotates_cards.spec.ts
 
-      - name: E2E nightly (headless)
+      - name: E2E nightly
         if: github.event_name == 'schedule'
-        run: npm run test:e2e
+        run: xvfb-run --auto-servernum -- npm run test:e2e
         env:
-          PLAYWRIGHT_HEADLESS: "1"
+          PLAYWRIGHT_HEADLESS: "0"

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { mkdtempSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test, expect, chromium } from "@playwright/test";
+import { waitForExtensionWorker } from "./extension_worker";
 
 const fixtureHtml = readFileSync(
   resolve("tests/fixtures/reed_search_results_e2e.html"),
@@ -55,9 +56,7 @@ test("annotates Reed cards with expected badge states", async () => {
     waitUntil: "domcontentloaded",
   });
 
-  const worker =
-    context.serviceWorkers()[0] ??
-    (await context.waitForEvent("serviceworker", { timeout: 5000 }));
+  const worker = await waitForExtensionWorker(context);
 
   await worker.evaluate(() =>
     chrome.storage.sync.set({

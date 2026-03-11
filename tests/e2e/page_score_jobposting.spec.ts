@@ -1,6 +1,7 @@
 import { readFileSync, mkdtempSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test, expect, chromium } from "@playwright/test";
+import { waitForExtensionWorker } from "./extension_worker";
 
 const fixtureHtml = readFileSync(
   resolve("tests/fixtures/jobposting_page.html"),
@@ -84,9 +85,7 @@ test("shows page score UI for JobPosting JSON-LD", async () => {
   const page = await context.newPage();
   await page.goto("https://example.com/job?id=1", { waitUntil: "domcontentloaded" });
 
-  const worker =
-    context.serviceWorkers()[0] ??
-    (await context.waitForEvent("serviceworker", { timeout: 5000 }));
+  const worker = await waitForExtensionWorker(context);
 
   await worker.evaluate(() =>
     chrome.storage.sync.set({
