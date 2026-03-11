@@ -2,6 +2,7 @@ import { readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium, expect, test } from "@playwright/test";
+import { waitForExtensionWorker } from "./extension_worker";
 
 const fixtureJson = readFileSync(
   resolve("tests/fixtures/adzuna_search_results.json"),
@@ -41,9 +42,7 @@ test("renders search results and sorting", async () => {
     });
   });
 
-  const worker =
-    context.serviceWorkers()[0] ??
-    (await context.waitForEvent("serviceworker", { timeout: 5000 }));
+  const worker = await waitForExtensionWorker(context);
 
   await worker.evaluate(() =>
     chrome.storage.sync.set({
