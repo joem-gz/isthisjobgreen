@@ -42,3 +42,4 @@ Won't change:
 - Scheduled run `22987172731` on March 12, 2026 failed in `actions/checkout@v4` before repository code ran; the log showed checkout successfully writing `http.https://github.com/.extraheader` and then failing `git fetch` with `fatal: could not read Username for 'https://github.com': terminal prompts disabled`.
 - Push run `22970166905` on the same merge commit `67f771f4f6512ef1fa5f1871d7201570e151cbc3` completed successfully, so this points to a checkout/auth path issue specific to the older checkout implementation rather than application code.
 - Official current `actions/checkout` release is `v6.0.2` (published January 9, 2026). Upgrading only checkout is the smallest targeted workflow change for this failure.
+- Branch push run `22997351755` on `codex/ci-checkout-auth-fix` completed successfully on March 12, 2026, including `Run actions/checkout@v6` and the remainder of the CI job.
