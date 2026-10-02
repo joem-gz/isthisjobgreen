@@ -73,8 +73,13 @@ Responses are normalised to:
 
 Headers:
 
-- `X-API-Key` — partner API key
-- `Origin` — partner site origin
+- `X-API-Key` — partner server API key
+- `Content-Type: application/json`
+
+This endpoint is server-to-server only. Requests with an `Origin` header are
+rejected so partner keys cannot be embedded in browser integrations. Browser
+widgets must call a same-origin partner endpoint, which validates the payload
+and forwards it with the server-side key.
 
 Request payload:
 
@@ -110,11 +115,15 @@ Response payload:
 
 ### Configuration
 
-Configure partner keys and origins via `WIDGET_PARTNERS_JSON`:
+Configure partner keys and allowed job URL origins via `WIDGET_PARTNERS_JSON`:
 
 ```
 WIDGET_PARTNERS_JSON=[{"key":"partner-key","name":"Partner","origins":["https://partner.test"],"cacheTtlDays":3}]
 ```
+
+`key` is a secret and must never be sent to a browser. `origins` limits the
+origins accepted in request `jobUrl` values; it is not a CORS authentication
+mechanism.
 
 Optional defaults:
 

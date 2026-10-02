@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createWidgetService,
+  validateWidgetScoreRequest,
   WidgetScoreRequest,
   WidgetScoreResponse,
 } from "../../server/widget_service";
@@ -32,21 +33,35 @@ describe("widget API service", () => {
 
     const result = service.handleScoreRequest(baseRequest, {
       apiKey: "invalid",
-      origin: "https://partner.test",
+      origin: null,
       ip: "127.0.0.1",
     });
 
     expect(result.status).toBe(401);
   });
 
-  it("enforces partner origin allowlists", () => {
+  it("rejects browser requests even when they present a valid server key", () => {
     const service = createWidgetService({
       partners: [{ key: "valid", name: "Test", origins: ["https://allowed.test"] }],
     });
 
     const result = service.handleScoreRequest(baseRequest, {
       apiKey: "valid",
-      origin: "https://blocked.test",
+      origin: "https://allowed.test",
+      ip: "127.0.0.1",
+    });
+
+    expect(result.status).toBe(403);
+  });
+
+  it("rejects even an empty Origin header", () => {
+    const service = createWidgetService({
+      partners: [{ key: "valid", name: "Test", origins: ["https://allowed.test"] }],
+    });
+
+    const result = service.handleScoreRequest(baseRequest, {
+      apiKey: "valid",
+      origin: "",
       ip: "127.0.0.1",
     });
 
@@ -72,7 +87,7 @@ describe("widget API service", () => {
 
     const context = {
       apiKey: "valid",
-      origin: "https://partner.test",
+      origin: null,
       ip: "127.0.0.1",
     };
 
@@ -105,7 +120,7 @@ describe("widget API service", () => {
 
     const context = {
       apiKey: "valid",
-      origin: "https://partner.test",
+      origin: null,
       ip: "127.0.0.1",
     };
 
@@ -115,5 +130,88 @@ describe("widget API service", () => {
     expect(first.status).toBe(200);
     expect(second.headers?.["X-CarbonRank-Cache"]).toBe("HIT");
     expect(scoreJob).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not share cached scores when score-affecting fields differ", () => {
+    const scoreJob = vi.fn(() => okResponse);
+    const service = createWidgetService(
+      {
+        partners: [
+          {
+            key: "valid",
+            name: "Test",
+            origins: ["https://partner.test"],
+          },
+        ],
+      },
+      { scoreJob },
+    );
+    const context = { apiKey: "valid", origin: null, ip: "127.0.0.1" };
+
+    service.handleScoreRequest(
+      { ...baseRequest, jobUrl: "https://partner.test/jobs/123" },
+      context,
+    );
+    service.handleScoreRequest(
+      { ...baseRequest, lat: 52, jobUrl: "https://partner.test/jobs/123" },
+      context,
+    );
+
+    expect(scoreJob).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects job URLs outside the partner allowlist", () => {
+    const service = createWidgetService({
+      partners: [{ key: "valid", name: "Test", origins: ["https://partner.test"] }],
+    });
+
+    const result = service.handleScoreRequest(
+      { ...baseRequest, jobUrl: "https://attacker.test/jobs/123" },
+      { apiKey: "valid", origin: null, ip: "127.0.0.1" },
+    );
+
+    expect(result.status).toBe(403);
+  });
+});
+
+describe("widget request validation", () => {
+  it("accepts and normalizes a bounded request", () => {
+    const result = validateWidgetScoreRequest({
+      title: "  Engineer  ",
+      locationName: "London",
+      lat: 51.5,
+      lon: -0.12,
+      remoteFlag: false,
+      jobUrl: "https://partner.test/jobs/123",
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        title: "Engineer",
+        employer: undefined,
+        locationName: "London",
+        lat: 51.5,
+        lon: -0.12,
+        remoteFlag: false,
+        jobUrl: "https://partner.test/jobs/123",
+      },
+    });
+  });
+
+  it.each([
+    [null, "JSON object"],
+    [{ remoteFlag: "true" }, "boolean"],
+    [{ lat: 91, lon: 0 }, "finite coordinate"],
+    [{ lat: 51.5 }, "provided together"],
+    [{ jobUrl: "javascript:alert(1)" }, "http or https"],
+    [{ extra: true }, "Unknown field"],
+  ])("rejects invalid request %#", (request, expectedError) => {
+    const result = validateWidgetScoreRequest(request);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain(expectedError);
+    }
   });
 });

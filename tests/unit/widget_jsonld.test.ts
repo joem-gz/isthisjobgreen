@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { init } from "../../widget/src/index";
+import { init, resolveScoreEndpoint } from "../../widget/src/index";
 
 function loadFixture(path: string): Document {
   const url = new URL(path, import.meta.url);
@@ -13,12 +13,24 @@ afterEach(() => {
 });
 
 describe("widget JobPosting JSON-LD", () => {
+  it("only resolves same-origin browser score endpoints", () => {
+    expect(
+      resolveScoreEndpoint("/api/widget/score", "https://partner.test/jobs/123"),
+    ).toBe("https://partner.test/api/widget/score");
+    expect(
+      resolveScoreEndpoint(
+        "https://central-api.test/api/widget/score",
+        "https://partner.test/jobs/123",
+      ),
+    ).toBeNull();
+  });
+
   it("renders remote JSON-LD roles without API calls", async () => {
     const doc = loadFixture("../fixtures/widget_jobposting_remote.html");
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    init({ doc, apiBaseUrl: "https://example.test/api/widget/score" });
+    init({ doc, apiBaseUrl: "/api/widget/score" });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const badge = doc.querySelector(
@@ -38,7 +50,7 @@ describe("widget JobPosting JSON-LD", () => {
     }) as Response);
     vi.stubGlobal("fetch", fetchMock);
 
-    init({ doc, apiBaseUrl: "https://example.test/api/widget/score" });
+    init({ doc, apiBaseUrl: "/api/widget/score" });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const badge = doc.querySelector(
@@ -53,6 +65,8 @@ describe("widget JobPosting JSON-LD", () => {
     const body = JSON.parse(requestInit.body);
     expect(body.lat).toBeCloseTo(51.4545, 4);
     expect(body.lon).toBeCloseTo(-2.5879, 4);
+    expect(requestInit.credentials).toBe("same-origin");
+    expect(requestInit.headers).toEqual({ "Content-Type": "application/json" });
   });
 
   it("renders no-data when JobPosting lacks location", async () => {
@@ -60,7 +74,7 @@ describe("widget JobPosting JSON-LD", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    init({ doc, apiBaseUrl: "https://example.test/api/widget/score" });
+    init({ doc, apiBaseUrl: "/api/widget/score" });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const badge = doc.querySelector(
