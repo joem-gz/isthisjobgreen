@@ -9,7 +9,7 @@ function loadFixture(path: string): Document {
 }
 
 const cardOptions = {
-  apiBaseUrl: "https://example.test/api/widget/score",
+  apiBaseUrl: "/api/widget/score",
   cardSelector: ".job-card",
   fields: {
     employer: ".job-card__employer",

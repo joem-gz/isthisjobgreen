@@ -45,11 +45,10 @@
     
     <script>
       // Initialize the IsThisJobGreen? Widget to scan for JobPosting JSON-LD
-      // This example uses a local test API key and local API base URL
-      // Update these values for production use.
+      // The browser calls a same-origin partner endpoint. That server-side
+      // endpoint authenticates to the central API; no secret is sent here.
       window.CarbonRankWidget?.init?.({
-        apiBaseUrl: "http://127.0.0.1:8787/api/widget/score",
-        apiKey: "local-test"
+        apiBaseUrl: "/api/widget/score"
       });
     </script>
   </body>

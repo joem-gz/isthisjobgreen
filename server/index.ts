@@ -13,11 +13,12 @@ import {
 import { loadOnsIntensityMap, resolveOnsIntensity } from "./ons_intensity";
 import { loadSbtiSnapshot, matchSbtiCompany, SbtiMatchResult } from "./sbti_snapshot";
 import { createRateLimiter } from "./rate_limit";
+import { isJsonContentType, readJsonBody, RequestBodyError } from "./request_body";
 import { CommuteMode } from "../src/storage/settings";
 import {
   createWidgetService,
   parseWidgetPartners,
-  WidgetScoreRequest,
+  validateWidgetScoreRequest,
 } from "./widget_service";
 
 type ProxyResponse = {
@@ -143,6 +144,8 @@ function sendJson(
   response.writeHead(statusCode, {
     "Content-Type": "application/json",
     "Content-Length": Buffer.byteLength(body),
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
     ...headers,
   });
   response.end(body);
@@ -204,20 +207,6 @@ function parseOfficeDays(value: string | null | undefined): number | undefined {
     return undefined;
   }
   return Math.min(5, Math.max(0, parsed));
-}
-
-async function readJsonBody(
-  request: import("node:http").IncomingMessage,
-): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  const body = Buffer.concat(chunks).toString("utf-8").trim();
-  if (!body) {
-    return {};
-  }
-  return JSON.parse(body);
 }
 
 function parseSearchQuery(url: URL): SearchQuery {
@@ -401,15 +390,18 @@ const routeHandlers: Record<string, RouteHandler> = {
   "/api/employer/signals": handleEmployerSignals,
 };
 
-const server = createServer(async (request, response) => {
+async function handleRequest(
+  request: import("node:http").IncomingMessage,
+  response: import("node:http").ServerResponse,
+): Promise<void> {
   const requestUrl = request.url ?? "/";
-  const host = request.headers.host ?? "localhost";
-  const url = new URL(requestUrl, `http://${host}`);
+  const url = new URL(requestUrl, "http://localhost");
 
   if (request.method === "OPTIONS") {
     if (url.pathname === "/api/widget/score") {
-      const preflight = widgetService.handlePreflight(request.headers.origin ?? null);
-      sendEmpty(response, preflight.status, preflight.headers ?? {});
+      sendJson(response, 403, {
+        error: "Browser requests must use a same-origin partner endpoint",
+      });
       return;
     }
 
@@ -424,16 +416,31 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    let payload: unknown;
-    try {
-      payload = await readJsonBody(request);
-    } catch {
-      sendJson(response, 400, { error: "Invalid JSON body" });
+    if (!isJsonContentType(request.headers["content-type"])) {
+      sendJson(response, 415, { error: "Content-Type must be application/json" });
       return;
     }
 
-    const apiKey = (request.headers["x-api-key"] as string | undefined) ?? null;
-    const result = widgetService.handleScoreRequest(payload as WidgetScoreRequest, {
+    let payload: unknown;
+    try {
+      payload = await readJsonBody(request);
+    } catch (error) {
+      if (error instanceof RequestBodyError) {
+        sendJson(response, error.statusCode, { error: error.message });
+        return;
+      }
+      throw error;
+    }
+
+    const validation = validateWidgetScoreRequest(payload);
+    if (!validation.ok) {
+      sendJson(response, 400, { error: validation.error });
+      return;
+    }
+
+    const rawApiKey = request.headers["x-api-key"];
+    const apiKey = typeof rawApiKey === "string" ? rawApiKey : null;
+    const result = widgetService.handleScoreRequest(validation.value, {
       apiKey,
       origin: request.headers.origin ?? null,
       ip: request.socket.remoteAddress ?? null,
@@ -465,6 +472,21 @@ const server = createServer(async (request, response) => {
   }
 
   await handler(url, response);
+}
+
+const server = createServer((request, response) => {
+  void handleRequest(request, response).catch((error) => {
+    console.error("[AdzunaProxy] Unhandled request failure", error);
+    if (!response.headersSent) {
+      sendJson(response, 500, { error: "Internal server error" });
+      return;
+    }
+    response.destroy();
+  });
+});
+
+server.on("error", (error) => {
+  console.error("[AdzunaProxy] Server error", error);
 });
 
 server.listen(PORT, () => {
