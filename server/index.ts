@@ -14,6 +14,11 @@ import { loadOnsIntensityMap, resolveOnsIntensity } from "./ons_intensity";
 import { loadSbtiSnapshot, matchSbtiCompany, SbtiMatchResult } from "./sbti_snapshot";
 import { createRateLimiter } from "./rate_limit";
 import { isJsonContentType, readJsonBody, RequestBodyError } from "./request_body";
+import {
+  isAllowedProxyOrigin,
+  loadProxyServerConfig,
+  ProxyServerConfig,
+} from "./config";
 import { CommuteMode } from "../src/storage/settings";
 import {
   createWidgetService,
@@ -69,7 +74,14 @@ function loadEnvFile(path: string): void {
 
 loadEnvFile(resolve(process.cwd(), "server", ".env"));
 
-const PORT = Number.parseInt(process.env.PORT ?? "8787", 10);
+let proxyServerConfig: ProxyServerConfig;
+try {
+  proxyServerConfig = loadProxyServerConfig(process.env);
+} catch (error) {
+  const message = error instanceof Error ? error.message : "Invalid server configuration";
+  console.error(`[AdzunaProxy] Configuration error: ${message}`);
+  process.exit(1);
+}
 const CACHE_TTL_MS = Number.parseInt(process.env.CACHE_TTL_MS ?? "600000", 10);
 const CACHE_MAX = Number.parseInt(process.env.CACHE_MAX ?? "200", 10);
 const RATE_LIMIT_WINDOW_MS = Number.parseInt(
@@ -160,8 +172,15 @@ function sendEmpty(
   response.end();
 }
 
-function setSearchCorsHeaders(response: import("node:http").ServerResponse): void {
-  response.setHeader("Access-Control-Allow-Origin", "*");
+function setSearchCorsHeaders(
+  response: import("node:http").ServerResponse,
+  origin: string | undefined,
+): void {
+  if (origin === undefined) {
+    return;
+  }
+  response.setHeader("Vary", "Origin");
+  response.setHeader("Access-Control-Allow-Origin", origin);
   response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
@@ -393,9 +412,12 @@ const routeHandlers: Record<string, RouteHandler> = {
 async function handleRequest(
   request: import("node:http").IncomingMessage,
   response: import("node:http").ServerResponse,
+  config: ProxyServerConfig,
 ): Promise<void> {
   const requestUrl = request.url ?? "/";
   const url = new URL(requestUrl, "http://localhost");
+  const rawOrigin = request.headers.origin;
+  const requestOrigin = typeof rawOrigin === "string" ? rawOrigin : undefined;
 
   if (request.method === "OPTIONS") {
     if (url.pathname === "/api/widget/score") {
@@ -405,7 +427,11 @@ async function handleRequest(
       return;
     }
 
-    setSearchCorsHeaders(response);
+    if (!isAllowedProxyOrigin(requestOrigin, config.allowedOrigins)) {
+      sendJson(response, 403, { error: "Origin is not allowed" });
+      return;
+    }
+    setSearchCorsHeaders(response, requestOrigin);
     sendEmpty(response, 204);
     return;
   }
@@ -449,7 +475,11 @@ async function handleRequest(
     return;
   }
 
-  setSearchCorsHeaders(response);
+  if (!isAllowedProxyOrigin(requestOrigin, config.allowedOrigins)) {
+    sendJson(response, 403, { error: "Origin is not allowed" });
+    return;
+  }
+  setSearchCorsHeaders(response, requestOrigin);
   const handler = routeHandlers[url.pathname];
   if (!handler) {
     sendJson(response, 404, { error: "Not found" });
@@ -474,21 +504,29 @@ async function handleRequest(
   await handler(url, response);
 }
 
-const server = createServer((request, response) => {
-  void handleRequest(request, response).catch((error) => {
-    console.error("[AdzunaProxy] Unhandled request failure", error);
-    if (!response.headersSent) {
-      sendJson(response, 500, { error: "Internal server error" });
-      return;
-    }
-    response.destroy();
+export function createProxyServer(config: ProxyServerConfig = proxyServerConfig) {
+  const server = createServer((request, response) => {
+    void handleRequest(request, response, config).catch((error) => {
+      console.error("[AdzunaProxy] Unhandled request failure", error);
+      if (!response.headersSent) {
+        sendJson(response, 500, { error: "Internal server error" });
+        return;
+      }
+      response.destroy();
+    });
   });
-});
 
-server.on("error", (error) => {
-  console.error("[AdzunaProxy] Server error", error);
-});
+  server.on("error", (error) => {
+    console.error("[AdzunaProxy] Server error", error);
+  });
+  return server;
+}
 
-server.listen(PORT, () => {
-  console.log(`[AdzunaProxy] Listening on http://localhost:${PORT}`);
-});
+if (process.env.NODE_ENV !== "test") {
+  const server = createProxyServer();
+  server.listen(proxyServerConfig.port, proxyServerConfig.host, () => {
+    console.log(
+      `[AdzunaProxy] Listening on http://${proxyServerConfig.host}:${proxyServerConfig.port}`,
+    );
+  });
+}
