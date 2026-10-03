@@ -1,8 +1,14 @@
 import {
-  FetchJsonRequestMessage,
-  FetchJsonResponseMessage,
+  EmployerResolveRequestMessage,
+  EmployerResponseMessage,
+  EmployerSignalsRequestMessage,
+  LOCAL_PROXY_ORIGIN,
   ScoreRequestMessage,
   ScoreResponseMessage,
+  isEmployerResolveRequestMessage,
+  isEmployerSignalsRequestMessage,
+  isScoreRequestMessage,
+  isTrustedExtensionSender,
 } from "./messages";
 import { scoreLocation } from "./scoring/location_scoring";
 import { APP_LOG_PREFIX } from "./ui/brand";
@@ -20,28 +26,46 @@ async function handleScoreRequest(message: ScoreRequestMessage): Promise<ScoreRe
   };
 }
 
-async function handleFetchJsonRequest(
-  message: FetchJsonRequestMessage,
-): Promise<FetchJsonResponseMessage> {
+async function handleEmployerRequest(
+  message: EmployerResolveRequestMessage | EmployerSignalsRequestMessage,
+): Promise<EmployerResponseMessage> {
   try {
-    const response = await fetch(message.url);
+    const url = new URL(
+      message.type === "employer_resolve_request"
+        ? "/api/employer/resolve"
+        : "/api/employer/signals",
+      LOCAL_PROXY_ORIGIN,
+    );
+    if (message.type === "employer_resolve_request") {
+      url.searchParams.set("name", message.name);
+      if (message.hintLocation) {
+        url.searchParams.set("hint_location", message.hintLocation);
+      }
+    } else {
+      url.searchParams.set("company_number", message.companyNumber);
+      if (message.companyName) {
+        url.searchParams.set("company_name", message.companyName);
+      }
+    }
+
+    const response = await fetch(url);
     if (!response.ok) {
       return {
-        type: "fetch_json_response",
+        type: "employer_response",
         ok: false,
         status: response.status,
         error: response.statusText || `Request failed with ${response.status}`,
       };
     }
     return {
-      type: "fetch_json_response",
+      type: "employer_response",
       ok: true,
       status: response.status,
       data: await response.json(),
     };
   } catch (error) {
     return {
-      type: "fetch_json_response",
+      type: "employer_response",
       ok: false,
       status: 0,
       error: error instanceof Error ? error.message : "Fetch failed",
@@ -49,12 +73,12 @@ async function handleFetchJsonRequest(
   }
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!message || typeof message !== "object") {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!isTrustedExtensionSender(sender)) {
     return;
   }
 
-  if (message.type === "score_request") {
+  if (isScoreRequestMessage(message)) {
     void handleScoreRequest(message)
       .then(sendResponse)
       .catch((error) => {
@@ -70,13 +94,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === "fetch_json_request") {
-    void handleFetchJsonRequest(message)
+  if (isEmployerResolveRequestMessage(message) || isEmployerSignalsRequestMessage(message)) {
+    void handleEmployerRequest(message)
       .then(sendResponse)
       .catch((error) => {
-        console.error(`${APP_LOG_PREFIX} Fetch failed`, error);
-        const response: FetchJsonResponseMessage = {
-          type: "fetch_json_response",
+        console.error(`${APP_LOG_PREFIX} Employer request failed`, error);
+        const response: EmployerResponseMessage = {
+          type: "employer_response",
           ok: false,
           status: 0,
           error: "Fetch failed",

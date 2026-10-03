@@ -10,7 +10,7 @@ describe("employer api runtime fetch", () => {
     const payload = { candidates: [], cached: false };
     const sendMessage = vi.fn((message, callback) => {
       callback({
-        type: "fetch_json_response",
+        type: "employer_response",
         ok: true,
         status: 200,
         data: payload,
@@ -29,7 +29,8 @@ describe("employer api runtime fetch", () => {
 
     expect(sendMessage).toHaveBeenCalled();
     const [message] = sendMessage.mock.calls[0];
-    expect(message.type).toBe("fetch_json_request");
+    expect(message.type).toBe("employer_resolve_request");
+    expect(message).toMatchObject({ name: "Acme Ltd", hintLocation: "London" });
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(result).toEqual(payload);
   });
