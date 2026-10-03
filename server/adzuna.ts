@@ -13,9 +13,20 @@ export type AdzunaConfig = {
   appKey: string;
   country?: string;
   resultsPerPage?: number;
+  timeoutMs?: number;
 };
 
 const BASE_URL = "https://api.adzuna.com/v1/api/jobs";
+const DEFAULT_TIMEOUT_MS = 10_000;
+
+function createDeadline(timeoutMs: number): {
+  signal: AbortSignal;
+  cancel: () => void;
+} {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return { signal: controller.signal, cancel: () => clearTimeout(timer) };
+}
 
 export function buildAdzunaUrl(query: SearchQuery, config: AdzunaConfig): string {
   const country = config.country ?? "gb";
@@ -100,14 +111,19 @@ export async function fetchAdzunaJobs(
 ): Promise<{ results: NormalizedJob[]; count: number }>
 {
   const url = buildAdzunaUrl(query, config);
-  const response = await fetchFn(url);
-  if (!response.ok) {
-    throw new Error(`Adzuna request failed with ${response.status}`);
+  const deadline = createDeadline(config.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  try {
+    const response = await fetchFn(url, { signal: deadline.signal });
+    if (!response.ok) {
+      throw new Error(`Adzuna request failed with ${response.status}`);
+    }
+
+    const payload = (await response.json()) as AdzunaApiResponse;
+    const results = normalizeAdzunaResults(payload);
+    const count = typeof payload.count === "number" ? payload.count : results.length;
+
+    return { results, count };
+  } finally {
+    deadline.cancel();
   }
-
-  const payload = (await response.json()) as AdzunaApiResponse;
-  const results = normalizeAdzunaResults(payload);
-  const count = typeof payload.count === "number" ? payload.count : results.length;
-
-  return { results, count };
 }

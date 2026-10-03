@@ -2,6 +2,7 @@ import { sortJobsByCo2 } from "../../search/sorting";
 import { ProxyJob, ScoredJob, SearchQuery } from "../../search/types";
 import { ScoreBreakdown, ScoreResult } from "../../scoring/types";
 import { SavedSearch } from "../../storage/search";
+import { resolveSafeJobUrl } from "../../search/job_links";
 
 function formatBreakdown(breakdown: ScoreBreakdown, placeName: string): string {
   return [
@@ -92,12 +93,18 @@ function buildJobCard(
   details.className = "job-details";
 
   const title = documentRef.createElement("h3");
-  const link = documentRef.createElement("a");
-  link.href = scored.job.redirect_url;
-  link.textContent = scored.job.title || "Untitled role";
-  link.target = "_blank";
-  link.rel = "noreferrer";
-  title.appendChild(link);
+  const titleText = scored.job.title || "Untitled role";
+  const safeUrl = resolveSafeJobUrl(scored.job.redirect_url);
+  if (safeUrl) {
+    const link = documentRef.createElement("a");
+    link.href = safeUrl;
+    link.textContent = titleText;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    title.appendChild(link);
+  } else {
+    title.textContent = titleText;
+  }
 
   const meta = documentRef.createElement("p");
   meta.className = "job-meta";

@@ -99,4 +99,23 @@ describe("Adzuna proxy helpers", () => {
     expect(response.count).toBe(1);
     expect(response.results[0].company).toBe("Remote Co");
   });
+
+  it("aborts a slow Adzuna request at its configured deadline", async () => {
+    const fetchMock = vi.fn(
+      (_input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted", "AbortError"));
+          });
+        }),
+    );
+
+    await expect(
+      fetchAdzunaJobs(
+        { q: "engineer", where: "", page: 1, remoteOnly: false },
+        { ...config, timeoutMs: 1 },
+        fetchMock,
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
 });

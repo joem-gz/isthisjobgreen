@@ -81,5 +81,39 @@ describe("search UI", () => {
     expect(jobIds[0]).toBe("remote-1");
     expect(jobIds).toContain("london-1");
     expect(jobIds).toContain("uk-1");
+
+    const links = Array.from(container.querySelectorAll("a"));
+    expect(links).toHaveLength(3);
+    expect(links[0].rel).toBe("noopener noreferrer");
+    expect(links[0].target).toBe("_blank");
+  });
+
+  it("renders malformed provider URLs as non-clickable text", () => {
+    const container = document.createElement("ul");
+    renderResults(
+      container,
+      [
+        {
+          job: {
+            id: "unsafe",
+            title: "Unsafe role",
+            company: "Example Co",
+            redirect_url: "javascript:alert(1)",
+            created: "",
+            description_snippet: "",
+            location_name: "Remote",
+            lat: null,
+            lon: null,
+          },
+          score: { status: "wfh", breakdown: { distanceKm: 0, officeDaysPerWeek: 3, annualKm: 0, emissionFactorKgPerKm: 0, annualKgCO2e: 0 }, reason: "Remote role" },
+          scoreValue: 0,
+        },
+      ],
+      false,
+      () => undefined,
+    );
+
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.querySelector("h3")?.textContent).toBe("Unsafe role");
   });
 });
