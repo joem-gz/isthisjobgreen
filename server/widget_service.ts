@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { classifyLocation } from "../src/geo/location_classifier";
 import { resolvePlaceFromLocationTokens } from "../src/geo/place_resolver";
 import { buildScore } from "../src/scoring/calculator";
@@ -14,9 +14,12 @@ export type WidgetScoreRequest = {
   lat?: number;
   lon?: number;
   remoteFlag?: boolean;
-  jobPostingJsonLd?: unknown;
   jobUrl?: string;
 };
+
+export type WidgetScoreRequestValidation =
+  | { ok: true; value: WidgetScoreRequest }
+  | { ok: false; error: string };
 
 export type WidgetScoreResponse = {
   badgeText: string;
@@ -80,19 +83,136 @@ const DEFAULT_COMMUTE_MODE: CommuteMode = "car";
 const DEFAULT_OFFICE_DAYS = 3;
 const DEFAULT_CACHE_DAYS = 3;
 const DEFAULT_RATE_LIMIT: RateLimitConfig = { windowMs: 60_000, max: 60 };
+const MAX_TEXT_LENGTHS = {
+  title: 300,
+  employer: 300,
+  locationName: 500,
+  jobUrl: 2_048,
+} as const;
+const WIDGET_REQUEST_FIELDS = new Set([
+  "title",
+  "employer",
+  "locationName",
+  "lat",
+  "lon",
+  "remoteFlag",
+  "jobUrl",
+]);
 
 function normalizeText(value: string | null | undefined): string {
   return value ? value.trim() : "";
 }
 
-function isOriginAllowed(origin: string, partner: WidgetPartnerConfig): boolean {
-  if (!partner.origins.length) {
-    return false;
-  }
-  if (partner.origins.includes("*")) {
+function secretsEqual(candidate: string, expected: string): boolean {
+  const candidateBuffer = Buffer.from(candidate);
+  const expectedBuffer = Buffer.from(expected);
+  return (
+    candidateBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(candidateBuffer, expectedBuffer)
+  );
+}
+
+function isJobUrlAllowed(jobUrl: string | undefined, partner: WidgetPartnerConfig): boolean {
+  if (!jobUrl || partner.origins.includes("*")) {
     return true;
   }
-  return partner.origins.includes(origin);
+  if (partner.origins.length === 0) {
+    return false;
+  }
+  try {
+    return partner.origins.includes(new URL(jobUrl).origin);
+  } catch {
+    return false;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readOptionalText(
+  value: unknown,
+  field: keyof typeof MAX_TEXT_LENGTHS,
+): { ok: true; value?: string } | { ok: false; error: string } {
+  if (value === undefined) {
+    return { ok: true };
+  }
+  if (typeof value !== "string") {
+    return { ok: false, error: `${field} must be a string` };
+  }
+  const normalized = value.trim();
+  if (normalized.length > MAX_TEXT_LENGTHS[field]) {
+    return { ok: false, error: `${field} is too long` };
+  }
+  return { ok: true, value: normalized };
+}
+
+function readOptionalCoordinate(
+  value: unknown,
+  field: "lat" | "lon",
+): { ok: true; value?: number } | { ok: false; error: string } {
+  if (value === undefined) {
+    return { ok: true };
+  }
+  const limit = field === "lat" ? 90 : 180;
+  if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > limit) {
+    return { ok: false, error: `${field} must be a finite coordinate` };
+  }
+  return { ok: true, value };
+}
+
+export function validateWidgetScoreRequest(value: unknown): WidgetScoreRequestValidation {
+  if (!isRecord(value)) {
+    return { ok: false, error: "Request body must be a JSON object" };
+  }
+
+  const unknownField = Object.keys(value).find((field) => !WIDGET_REQUEST_FIELDS.has(field));
+  if (unknownField) {
+    return { ok: false, error: `Unknown field: ${unknownField}` };
+  }
+
+  const title = readOptionalText(value.title, "title");
+  const employer = readOptionalText(value.employer, "employer");
+  const locationName = readOptionalText(value.locationName, "locationName");
+  const jobUrl = readOptionalText(value.jobUrl, "jobUrl");
+  const lat = readOptionalCoordinate(value.lat, "lat");
+  const lon = readOptionalCoordinate(value.lon, "lon");
+  if (!title.ok) return title;
+  if (!employer.ok) return employer;
+  if (!locationName.ok) return locationName;
+  if (!jobUrl.ok) return jobUrl;
+  if (!lat.ok) return lat;
+  if (!lon.ok) return lon;
+
+  if (value.remoteFlag !== undefined && typeof value.remoteFlag !== "boolean") {
+    return { ok: false, error: "remoteFlag must be a boolean" };
+  }
+  if ((lat.value === undefined) !== (lon.value === undefined)) {
+    return { ok: false, error: "lat and lon must be provided together" };
+  }
+  if (jobUrl.value) {
+    try {
+      const parsed = new URL(jobUrl.value);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        return { ok: false, error: "jobUrl must use http or https" };
+      }
+    } catch {
+      return { ok: false, error: "jobUrl must be an absolute URL" };
+    }
+  }
+
+  return {
+    ok: true,
+    value: {
+      title: title.value,
+      employer: employer.value,
+      locationName: locationName.value,
+      lat: lat.value,
+      lon: lon.value,
+      remoteFlag: value.remoteFlag as boolean | undefined,
+      jobUrl: jobUrl.value,
+    },
+  };
 }
 
 function clampCacheDays(value: number | undefined): number {
@@ -221,14 +341,14 @@ function scoreRequest(
 }
 
 function buildCacheKey(request: WidgetScoreRequest): string {
-  const url = normalizeText(request.jobUrl);
-  const seed = url || JSON.stringify({
+  const seed = JSON.stringify({
     title: normalizeText(request.title),
     employer: normalizeText(request.employer),
     locationName: normalizeText(request.locationName),
     lat: request.lat,
     lon: request.lon,
     remoteFlag: Boolean(request.remoteFlag),
+    jobUrl: normalizeText(request.jobUrl),
   });
   return createHash("sha256").update(seed).digest("hex");
 }
@@ -241,37 +361,33 @@ function buildDefaults(config: WidgetServiceConfig): WidgetScoreDefaults {
   };
 }
 
-function buildCorsHeaders(origin: string | null | undefined): Record<string, string> {
-  if (!origin) {
-    return {};
-  }
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-API-Key",
-    "Access-Control-Max-Age": "86400",
-    Vary: "Origin",
-  };
-}
-
 export function parseWidgetPartners(raw: string | undefined): WidgetPartnerConfig[] {
   if (!raw) {
     return [];
   }
   try {
     const parsed = JSON.parse(raw);
-    const partners = Array.isArray(parsed) ? parsed : [parsed];
+    const partners: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
     return partners
-      .map((partner) => ({
-        key: typeof partner.key === "string" ? partner.key : "",
-        name: typeof partner.name === "string" ? partner.name : "",
-        origins: Array.isArray(partner.origins)
-          ? partner.origins.filter((origin) => typeof origin === "string")
-          : [],
-        rateLimit: partner.rateLimit,
-        cacheTtlDays:
-          typeof partner.cacheTtlDays === "number" ? partner.cacheTtlDays : undefined,
-      }))
+      .filter(isRecord)
+      .map((partner) => {
+        const origins = Array.isArray(partner.origins)
+          ? partner.origins.filter((origin): origin is string => typeof origin === "string")
+          : [];
+        return {
+          key: typeof partner.key === "string" ? partner.key : "",
+          name: typeof partner.name === "string" ? partner.name : "",
+          origins,
+          rateLimit: isRecord(partner.rateLimit)
+            ? {
+                windowMs: Number(partner.rateLimit.windowMs),
+                max: Number(partner.rateLimit.max),
+              }
+            : undefined,
+          cacheTtlDays:
+            typeof partner.cacheTtlDays === "number" ? partner.cacheTtlDays : undefined,
+        };
+      })
       .filter((partner) => Boolean(partner.key));
   } catch {
     return [];
@@ -296,7 +412,12 @@ export function createWidgetService(
     if (!key) {
       return null;
     }
-    return partnerMap.get(key) ?? null;
+    for (const [expectedKey, partner] of partnerMap) {
+      if (secretsEqual(key, expectedKey)) {
+        return partner;
+      }
+    }
+    return null;
   }
 
   function getCache(partner: WidgetPartnerConfig) {
@@ -336,29 +457,6 @@ export function createWidgetService(
     });
   }
 
-  function handlePreflight(origin: string | null | undefined): WidgetServiceResponse {
-    if (!origin) {
-      return {
-        status: 204,
-        body: { error: "" },
-      };
-    }
-    const allowed = Array.from(partnerMap.values()).some((partner) =>
-      isOriginAllowed(origin, partner),
-    );
-    if (!allowed) {
-      return {
-        status: 403,
-        body: { error: "Origin not allowed" },
-      };
-    }
-    return {
-      status: 204,
-      body: { error: "" },
-      headers: buildCorsHeaders(origin),
-    };
-  }
-
   function handleScoreRequest(
     request: WidgetScoreRequest,
     context: WidgetServiceContext,
@@ -370,6 +468,15 @@ export function createWidgetService(
       };
     }
 
+    // Shared partner keys are server-side secrets. Browser requests must use a
+    // same-origin partner endpoint that calls this service without Origin.
+    if (context.origin !== null && context.origin !== undefined) {
+      return {
+        status: 403,
+        body: { error: "Browser requests must use a same-origin partner endpoint" },
+      };
+    }
+
     const partner = getPartner(context.apiKey);
     if (!partner) {
       return {
@@ -378,11 +485,10 @@ export function createWidgetService(
       };
     }
 
-    const origin = context.origin ?? null;
-    if (origin && !isOriginAllowed(origin, partner)) {
+    if (!isJobUrlAllowed(request.jobUrl, partner)) {
       return {
         status: 403,
-        body: { error: "Origin not allowed" },
+        body: { error: "Job URL is not allowed for this partner" },
       };
     }
 
@@ -395,7 +501,6 @@ export function createWidgetService(
         body: { error: "Rate limit exceeded" },
         headers: {
           "Retry-After": Math.ceil((rate.retryAfterMs ?? 0) / 1000).toString(),
-          ...buildCorsHeaders(origin),
         },
       };
     }
@@ -410,7 +515,6 @@ export function createWidgetService(
         body: cached,
         headers: {
           "X-CarbonRank-Cache": "HIT",
-          ...buildCorsHeaders(origin),
         },
       };
     }
@@ -424,7 +528,6 @@ export function createWidgetService(
       body: response,
       headers: {
         "X-CarbonRank-Cache": "MISS",
-        ...buildCorsHeaders(origin),
       },
     };
   }
@@ -434,7 +537,6 @@ export function createWidgetService(
   }
 
   return {
-    handlePreflight,
     handleScoreRequest,
     getUsageStats,
   };

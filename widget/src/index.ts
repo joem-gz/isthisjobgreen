@@ -31,7 +31,6 @@ export type WidgetInitOptions = {
   root?: ParentNode;
   doc?: Document;
   apiBaseUrl?: string;
-  apiKey?: string;
   cardSelector?: string;
   fields?: WidgetCardFields;
   observeMutations?: boolean;
@@ -93,6 +92,19 @@ type WidgetRuntime = {
 
 const modalStates = new WeakMap<Document, ModalState>();
 const widgetRuntimes = new WeakMap<Document, WidgetRuntime>();
+
+export function resolveScoreEndpoint(configuredUrl: string, pageHref: string): string | null {
+  try {
+    const pageUrl = new URL(pageHref);
+    if (pageUrl.protocol !== "http:" && pageUrl.protocol !== "https:") {
+      return configuredUrl;
+    }
+    const resolvedUrl = new URL(configuredUrl, pageUrl);
+    return resolvedUrl.origin === pageUrl.origin ? resolvedUrl.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
 function parsePayload(raw: string | null): WidgetPayload | null {
   if (!raw) {
@@ -440,19 +452,24 @@ function renderWidget(host: HTMLElement, payload: WidgetPayload | null, doc: Doc
 async function fetchScore(
   request: WidgetScoreRequest,
   options: WidgetInitOptions,
+  doc: Document,
 ): Promise<WidgetPayload> {
-  const apiBaseUrl = options.apiBaseUrl ?? DEFAULT_API_BASE;
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (options.apiKey) {
-    headers["x-api-key"] = options.apiKey;
+  const configuredUrl = options.apiBaseUrl ?? DEFAULT_API_BASE;
+  const apiUrl = resolveScoreEndpoint(configuredUrl, doc.location?.href ?? doc.URL);
+  if (!apiUrl) {
+    return {
+      status: "error",
+      reason: "Score endpoint must be same-origin",
+    };
   }
 
   try {
-    const response = await fetch(apiBaseUrl, {
+    const response = await fetch(apiUrl, {
       method: "POST",
-      headers,
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify(request),
     });
 
@@ -496,7 +513,7 @@ async function requestScore(
   host.dataset.carbonrankRequestState = "loading";
   renderWidget(host, { status: "loading" }, doc);
 
-  const payload = await fetchScore(request, options);
+  const payload = await fetchScore(request, options, doc);
   renderWidget(host, payload, doc);
   host.dataset.carbonrankRequestState = "done";
 }
