@@ -30,7 +30,21 @@ npm run server:build
 npm run server:start
 ```
 
-The proxy listens on `http://localhost:8787` by default.
+The proxy listens on `http://127.0.0.1:8787` by default. It is intentionally
+local-only: the service does not provide public-client authentication for its
+provider-backed search and employer routes. Do not bind it to a LAN or public
+interface without a separate authenticated gateway.
+
+If a browser page or unpacked extension needs cross-origin access during local
+development, configure an exact origin allowlist. Wildcards are rejected:
+
+```
+PROXY_ALLOWED_ORIGINS=http://localhost:3000,chrome-extension://your-extension-id
+```
+
+Requests without an `Origin` header (including extension/service-to-service
+calls) continue to work. Requests with an origin not in this list are rejected
+by the proxy; CORS is not used as authentication.
 
 ## Endpoints
 
