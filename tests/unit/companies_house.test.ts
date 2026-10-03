@@ -88,4 +88,24 @@ describe("Companies House helpers", () => {
 
     expect(response.sic_codes).toEqual(["62020"]);
   });
+
+  it("aborts a slow Companies House request at its configured deadline", async () => {
+    const fetchMock = vi.fn(
+      (_input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted", "AbortError"));
+          });
+        }),
+    );
+
+    await expect(
+      fetchCompaniesHouseSearch("Acme", {
+        apiKey: "api-key",
+        fetchFn: fetchMock,
+        baseUrl: "https://example.test",
+        timeoutMs: 1,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
 });

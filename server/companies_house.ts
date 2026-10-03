@@ -54,6 +54,7 @@ export type CompaniesHouseClientConfig = {
   apiKey: string;
   fetchFn?: typeof fetch;
   baseUrl?: string;
+  timeoutMs?: number;
 };
 
 export type OrgClassification = "employer" | "agency" | "unknown";
@@ -72,6 +73,16 @@ export type EmployerCandidate = {
 
 const AGENCY_SIC_CODES = new Set(["78101", "78109", "78200", "78300"]);
 const AGENCY_SIC_PREFIX = "78";
+const DEFAULT_TIMEOUT_MS = 10_000;
+
+function createDeadline(timeoutMs: number): {
+  signal: AbortSignal;
+  cancel: () => void;
+} {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return { signal: controller.signal, cancel: () => clearTimeout(timer) };
+}
 
 function normalizeSicCode(code: string): string {
   return code.replace(/[^0-9]/g, "");
@@ -122,18 +133,24 @@ async function fetchCompaniesHouseJson<T>(
   url: string,
   config: CompaniesHouseClientConfig,
 ): Promise<T> {
-  const response = await (config.fetchFn ?? fetch)(url, {
-    headers: {
-      Authorization: buildCompaniesHouseAuthHeader(config.apiKey),
-      Accept: "application/json",
-    },
-  });
+  const deadline = createDeadline(config.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  try {
+    const response = await (config.fetchFn ?? fetch)(url, {
+      headers: {
+        Authorization: buildCompaniesHouseAuthHeader(config.apiKey),
+        Accept: "application/json",
+      },
+      signal: deadline.signal,
+    });
 
-  if (!response.ok) {
-    throw new Error(`Companies House request failed with ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`Companies House request failed with ${response.status}`);
+    }
+
+    return (await response.json()) as T;
+  } finally {
+    deadline.cancel();
   }
-
-  return (await response.json()) as T;
 }
 
 export async function fetchCompaniesHouseSearch(
