@@ -39,6 +39,7 @@ Won't change:
 - `npm run lint` — passed.
 - `npm test` — passed: 31 files, 112 tests.
 - `npm run build` — passed.
+- Follow-up score-message validation — passed: valid settings are accepted while missing, invalid-enum, oversized-postcode, fractional, non-finite, and out-of-range office-day settings are rejected.
 - `npm run test:e2e -- tests/e2e/annotates_cards.spec.ts` — blocked before test execution because the local Playwright Chromium binary is not installed.
 - `npx tsc --noEmit` — still reports the repository's pre-existing diagnostics; no new diagnostics were introduced by this slice.
 - `git diff --check` — passed.

@@ -22,6 +22,7 @@ Passed:
 - `npm test` — 31 files, 112 tests
 - `npm run build`
 - `git diff --check`
+- Follow-up score-message tests cover valid settings and malformed/unsafe settings fields.
 
 Blocked:
 - `npm run test:e2e -- tests/e2e/annotates_cards.spec.ts` — Playwright could not launch because the local Chromium binary is not installed in this worktree environment.

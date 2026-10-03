@@ -31,6 +31,17 @@ describe("extension runtime message validation", () => {
   });
 
   it("rejects oversized or malformed request fields", () => {
+    const validScoreRequest = {
+      type: "score_request",
+      requestId: "request-1",
+      locationName: "London",
+      settings: {
+        homePostcode: "SW1A 1AA",
+        commuteMode: "car",
+        officeDaysPerWeek: 3,
+      },
+    };
+    expect(isScoreRequestMessage(validScoreRequest)).toBe(true);
     expect(
       isEmployerResolveRequestMessage({
         type: "employer_resolve_request",
@@ -44,14 +55,16 @@ describe("extension runtime message validation", () => {
         companyName: null,
       }),
     ).toBe(false);
-    expect(
-      isScoreRequestMessage({
-        type: "score_request",
-        requestId: "request-1",
-        locationName: "London",
-        settings: [],
-      }),
-    ).toBe(false);
+    for (const settings of [
+      {},
+      { homePostcode: "SW1A 1AA", commuteMode: "plane", officeDaysPerWeek: 3 },
+      { homePostcode: "x".repeat(17), commuteMode: "car", officeDaysPerWeek: 3 },
+      { homePostcode: "SW1A 1AA", commuteMode: "car", officeDaysPerWeek: 5.5 },
+      { homePostcode: "SW1A 1AA", commuteMode: "car", officeDaysPerWeek: Number.NaN },
+      { homePostcode: "SW1A 1AA", commuteMode: "car", officeDaysPerWeek: 6 },
+    ]) {
+      expect(isScoreRequestMessage({ ...validScoreRequest, settings })).toBe(false);
+    }
   });
 
   it("requires the extension runtime sender id", () => {

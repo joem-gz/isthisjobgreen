@@ -44,13 +44,29 @@ function isBoundedString(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.length <= maxLength;
 }
 
+function isSettings(value: unknown): value is Settings {
+  return (
+    isRecord(value) &&
+    isBoundedString(value.homePostcode, 16) &&
+    (value.commuteMode === "car" ||
+      value.commuteMode === "bus" ||
+      value.commuteMode === "rail" ||
+      value.commuteMode === "walk" ||
+      value.commuteMode === "cycle") &&
+    typeof value.officeDaysPerWeek === "number" &&
+    Number.isInteger(value.officeDaysPerWeek) &&
+    value.officeDaysPerWeek >= 0 &&
+    value.officeDaysPerWeek <= 5
+  );
+}
+
 export function isScoreRequestMessage(value: unknown): value is ScoreRequestMessage {
   return (
     isRecord(value) &&
     value.type === "score_request" &&
     isBoundedString(value.requestId, 128) &&
     isBoundedString(value.locationName, 500) &&
-    isRecord(value.settings)
+    isSettings(value.settings)
   );
 }
 
