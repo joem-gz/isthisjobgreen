@@ -382,6 +382,10 @@ export function parseWidgetPartners(raw: string | undefined): WidgetPartnerConfi
             ? {
                 windowMs: Number(partner.rateLimit.windowMs),
                 max: Number(partner.rateLimit.max),
+                maxBuckets:
+                  partner.rateLimit.maxBuckets === undefined
+                    ? undefined
+                    : Number(partner.rateLimit.maxBuckets),
               }
             : undefined,
           cacheTtlDays:

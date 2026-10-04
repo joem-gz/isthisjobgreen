@@ -46,6 +46,10 @@ Requests without an `Origin` header (including extension/service-to-service
 calls) continue to work. Requests with an origin not in this list are rejected
 by the proxy; CORS is not used as authentication.
 
+The loopback service keys rate limits from the direct socket peer and deliberately
+ignores `X-Forwarded-For`. If a future authenticated gateway exposes these routes,
+rate limiting and trusted-proxy handling must be enforced at that gateway.
+
 ## Endpoints
 
 `GET /api/jobs/search`
@@ -149,6 +153,15 @@ WIDGET_OFFICE_DAYS=3
 WIDGET_CACHE_MAX=500
 WIDGET_RATE_LIMIT_WINDOW_MS=60000
 WIDGET_RATE_LIMIT_MAX=120
+WIDGET_RATE_LIMIT_MAX_BUCKETS=10000
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX=60
+RATE_LIMIT_MAX_BUCKETS=10000
+PROXY_REQUEST_TIMEOUT_MS=30000
+PROXY_HEADERS_TIMEOUT_MS=10000
+PROXY_KEEP_ALIVE_TIMEOUT_MS=5000
+```
+
 `GET /api/employer/resolve`
 
 Query parameters:
