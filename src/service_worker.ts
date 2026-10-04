@@ -5,12 +5,16 @@ import {
   LOCAL_PROXY_ORIGIN,
   ScoreRequestMessage,
   ScoreResponseMessage,
+  SearchScoreRequestMessage,
+  SearchScoreResponseMessage,
   isEmployerResolveRequestMessage,
   isEmployerSignalsRequestMessage,
   isScoreRequestMessage,
+  isSearchScoreRequestMessage,
   isTrustedExtensionSender,
 } from "./messages";
 import { scoreLocation } from "./scoring/location_scoring";
+import { scoreJobs } from "./search/scoring";
 import { APP_LOG_PREFIX } from "./ui/brand";
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -23,6 +27,18 @@ async function handleScoreRequest(message: ScoreRequestMessage): Promise<ScoreRe
     type: "score_response",
     requestId,
     result: await scoreLocation(locationName, settings),
+  };
+}
+
+function handleSearchScoreRequest(
+  message: SearchScoreRequestMessage,
+): SearchScoreResponseMessage {
+  return {
+    type: "search_score_response",
+    requestId: message.requestId,
+    results: scoreJobs(message.jobs, message.settings, message.home, {
+      remoteOverride: message.remoteOverride,
+    }),
   };
 }
 
@@ -92,6 +108,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
 
     return true;
+  }
+
+  if (isSearchScoreRequestMessage(message)) {
+    try {
+      sendResponse(handleSearchScoreRequest(message));
+    } catch (error) {
+      console.error(`${APP_LOG_PREFIX} Search scoring failed`, error);
+      const response: SearchScoreResponseMessage = {
+        type: "search_score_response",
+        requestId: message.requestId,
+        error: "Search scoring failed",
+      };
+      sendResponse(response);
+    }
+    return;
   }
 
   if (isEmployerResolveRequestMessage(message) || isEmployerSignalsRequestMessage(message)) {

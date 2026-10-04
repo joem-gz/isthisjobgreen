@@ -3,6 +3,7 @@ import {
   isEmployerResolveRequestMessage,
   isEmployerSignalsRequestMessage,
   isScoreRequestMessage,
+  isSearchScoreRequestMessage,
   isTrustedExtensionSender,
 } from "../../src/messages";
 
@@ -71,5 +72,40 @@ describe("extension runtime message validation", () => {
     expect(isTrustedExtensionSender({ id: "extension-id" }, "extension-id")).toBe(true);
     expect(isTrustedExtensionSender({ id: "other-extension" }, "extension-id")).toBe(false);
     expect(isTrustedExtensionSender({}, "extension-id")).toBe(false);
+  });
+
+  it("validates bounded search scoring batches", () => {
+    const request = {
+      type: "search_score_request",
+      requestId: "search-1",
+      jobs: [
+        {
+          id: "job-1",
+          title: "Engineer",
+          company: "Example",
+          redirect_url: "https://jobs.example/job-1",
+          created: "2026-10-04",
+          description_snippet: "Role",
+          location_name: "London",
+          lat: 51.5,
+          lon: -0.1,
+        },
+      ],
+      settings: {
+        homePostcode: "SW1A 1AA",
+        commuteMode: "rail",
+        officeDaysPerWeek: 3,
+      },
+      home: { latitude: 51.5, longitude: -0.1 },
+      remoteOverride: false,
+    };
+
+    expect(isSearchScoreRequestMessage(request)).toBe(true);
+    expect(isSearchScoreRequestMessage({ ...request, jobs: new Array(251).fill(request.jobs[0]) }))
+      .toBe(false);
+    expect(isSearchScoreRequestMessage({ ...request, home: { latitude: 91, longitude: 0 } }))
+      .toBe(false);
+    expect(isSearchScoreRequestMessage({ ...request, jobs: [{ ...request.jobs[0], lat: NaN }] }))
+      .toBe(false);
   });
 });
