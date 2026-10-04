@@ -22,7 +22,6 @@
     "@types/node": "^25.0.9",
     "@typescript-eslint/eslint-plugin": "^8.53.1",
     "@typescript-eslint/parser": "^8.53.1",
-    "@vitest/ui": "^4.0.17",
     "csv-parse": "^6.1.0",
     "esbuild": "^0.27.2",
     "eslint": "^9.39.2",
@@ -32,7 +31,7 @@
     "prettier": "^3.8.1",
     "proj4": "^2.20.2",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.17",
+    "vitest": "^4.1.11",
     "xlsx": "^0.18.5",
     "yauzl": "^3.2.0"
   }
