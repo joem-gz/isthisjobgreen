@@ -8,17 +8,6 @@ import {
 } from "../../src/storage/settings";
 
 type Store = Record<string, unknown>;
-type ChromeSyncStorage = {
-  get: (key: string | string[]) => Promise<Record<string, unknown>>;
-  set: (items: Record<string, unknown>) => Promise<void>;
-};
-
-type ChromeMock = {
-  storage: {
-    sync: ChromeSyncStorage;
-  };
-};
-
 function installChromeStorageMock(store: Store) {
   const sync = {
     get: vi.fn(async (key: string | string[]) => {
@@ -36,12 +25,11 @@ function installChromeStorageMock(store: Store) {
     }),
   };
 
-  const globalWithChrome = globalThis as typeof globalThis & { chrome: ChromeMock };
-  globalWithChrome.chrome = {
+  vi.stubGlobal("chrome", {
     storage: {
       sync,
     },
-  };
+  });
 
   return sync;
 }

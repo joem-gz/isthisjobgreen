@@ -7,25 +7,21 @@ import {
 } from "../storage/settings";
 import { setAttributionLink } from "../ui/attribution";
 
-const form = document.querySelector<HTMLFormElement>("#settings-form");
-const postcodeInput = document.querySelector<HTMLInputElement>("#home-postcode");
-const commuteSelect = document.querySelector<HTMLSelectElement>("#commute-mode");
-const officeSelect = document.querySelector<HTMLSelectElement>("#office-days");
-const statusEl = document.querySelector<HTMLParagraphElement>("#status");
-const openSearchButton = document.querySelector<HTMLButtonElement>("#open-search");
-const attributionLink = document.querySelector<HTMLAnchorElement>("#popup-attribution");
-
-if (
-  !form ||
-  !postcodeInput ||
-  !commuteSelect ||
-  !officeSelect ||
-  !statusEl ||
-  !openSearchButton ||
-  !attributionLink
-) {
-  throw new Error("Popup DOM missing required elements");
+function queryRequired<T extends Element>(selector: string): T {
+  const element = document.querySelector<T>(selector);
+  if (!element) {
+    throw new Error(`Popup DOM missing required element: ${selector}`);
+  }
+  return element;
 }
+
+const form = queryRequired<HTMLFormElement>("#settings-form");
+const postcodeInput = queryRequired<HTMLInputElement>("#home-postcode");
+const commuteSelect = queryRequired<HTMLSelectElement>("#commute-mode");
+const officeSelect = queryRequired<HTMLSelectElement>("#office-days");
+const statusEl = queryRequired<HTMLParagraphElement>("#status");
+const openSearchButton = queryRequired<HTMLButtonElement>("#open-search");
+const attributionLink = queryRequired<HTMLAnchorElement>("#popup-attribution");
 
 setAttributionLink(attributionLink);
 
