@@ -84,21 +84,8 @@ try {
 }
 const CACHE_TTL_MS = Number.parseInt(process.env.CACHE_TTL_MS ?? "600000", 10);
 const CACHE_MAX = Number.parseInt(process.env.CACHE_MAX ?? "200", 10);
-const RATE_LIMIT_WINDOW_MS = Number.parseInt(
-  process.env.RATE_LIMIT_WINDOW_MS ?? "60000",
-  10,
-);
-const RATE_LIMIT_MAX = Number.parseInt(process.env.RATE_LIMIT_MAX ?? "60", 10);
 const WIDGET_PARTNERS = parseWidgetPartners(process.env.WIDGET_PARTNERS_JSON);
 const WIDGET_CACHE_MAX = Number.parseInt(process.env.WIDGET_CACHE_MAX ?? "500", 10);
-const WIDGET_RATE_LIMIT_WINDOW_MS = Number.parseInt(
-  process.env.WIDGET_RATE_LIMIT_WINDOW_MS ?? "60000",
-  10,
-);
-const WIDGET_RATE_LIMIT_MAX = Number.parseInt(
-  process.env.WIDGET_RATE_LIMIT_MAX ?? "120",
-  10,
-);
 const WIDGET_HOME_LAT = parseNumber(process.env.WIDGET_HOME_LAT) ?? 51.5074;
 const WIDGET_HOME_LON = parseNumber(process.env.WIDGET_HOME_LON) ?? -0.1278;
 const WIDGET_COMMUTE_MODE = parseCommuteMode(process.env.WIDGET_COMMUTE_MODE) ?? "car";
@@ -130,20 +117,13 @@ const employerProfileCache = createLruCache<CompaniesHouseProfile>({
 });
 const onsIntensityMap = loadOnsIntensityMap();
 const sbtiSnapshot = loadSbtiSnapshot();
-const rateLimiter = createRateLimiter({
-  windowMs: RATE_LIMIT_WINDOW_MS,
-  max: RATE_LIMIT_MAX,
-});
 const widgetService = createWidgetService({
   partners: WIDGET_PARTNERS,
   cacheMax: WIDGET_CACHE_MAX,
   defaultHome: { lat: WIDGET_HOME_LAT, lon: WIDGET_HOME_LON },
   defaultCommuteMode: WIDGET_COMMUTE_MODE,
   defaultOfficeDays: WIDGET_OFFICE_DAYS,
-  defaultRateLimit: {
-    windowMs: WIDGET_RATE_LIMIT_WINDOW_MS,
-    max: WIDGET_RATE_LIMIT_MAX,
-  },
+  defaultRateLimit: proxyServerConfig.widgetRateLimit,
 });
 
 function sendJson(
@@ -413,6 +393,7 @@ async function handleRequest(
   request: import("node:http").IncomingMessage,
   response: import("node:http").ServerResponse,
   config: ProxyServerConfig,
+  providerRateLimiter: ReturnType<typeof createRateLimiter>,
 ): Promise<void> {
   const requestUrl = request.url ?? "/";
   const url = new URL(requestUrl, "http://localhost");
@@ -492,7 +473,7 @@ async function handleRequest(
   }
 
   const clientKey = request.socket.remoteAddress ?? "unknown";
-  const rate = rateLimiter(clientKey);
+  const rate = providerRateLimiter(clientKey);
   if (!rate.allowed) {
     sendJson(response, 429, {
       error: "Rate limit exceeded",
@@ -505,8 +486,9 @@ async function handleRequest(
 }
 
 export function createProxyServer(config: ProxyServerConfig = proxyServerConfig) {
+  const providerRateLimiter = createRateLimiter(config.providerRateLimit);
   const server = createServer((request, response) => {
-    void handleRequest(request, response, config).catch((error) => {
+    void handleRequest(request, response, config, providerRateLimiter).catch((error) => {
       console.error("[AdzunaProxy] Unhandled request failure", error);
       if (!response.headersSent) {
         sendJson(response, 500, { error: "Internal server error" });
@@ -519,6 +501,9 @@ export function createProxyServer(config: ProxyServerConfig = proxyServerConfig)
   server.on("error", (error) => {
     console.error("[AdzunaProxy] Server error", error);
   });
+  server.requestTimeout = config.httpTimeouts.requestMs;
+  server.headersTimeout = config.httpTimeouts.headersMs;
+  server.keepAliveTimeout = config.httpTimeouts.keepAliveMs;
   return server;
 }
 

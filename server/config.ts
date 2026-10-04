@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import type { RateLimitConfig } from "./rate_limit";
 
 export type ServerEnvironment = Record<string, string | undefined>;
 
@@ -6,6 +7,13 @@ export type ProxyServerConfig = {
   host: string;
   port: number;
   allowedOrigins: string[];
+  providerRateLimit: Required<RateLimitConfig>;
+  widgetRateLimit: Required<RateLimitConfig>;
+  httpTimeouts: {
+    requestMs: number;
+    headersMs: number;
+    keepAliveMs: number;
+  };
 };
 
 export class ServerConfigError extends Error {
@@ -17,6 +25,13 @@ export class ServerConfigError extends Error {
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8787;
+const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
+const DEFAULT_PROVIDER_RATE_LIMIT_MAX = 60;
+const DEFAULT_WIDGET_RATE_LIMIT_MAX = 120;
+const DEFAULT_RATE_LIMIT_MAX_BUCKETS = 10_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_HEADERS_TIMEOUT_MS = 10_000;
+const DEFAULT_KEEP_ALIVE_TIMEOUT_MS = 5_000;
 const ALLOWED_ORIGIN_SCHEMES = new Set([
   "http:",
   "https:",
@@ -36,6 +51,26 @@ function parsePort(raw: string | undefined): number {
     throw new ServerConfigError("PORT must be an integer between 1 and 65535");
   }
   return port;
+}
+
+function parseBoundedInteger(
+  raw: string | undefined,
+  name: string,
+  defaultValue: number,
+  minimum: number,
+  maximum: number,
+): number {
+  if (raw === undefined || raw.trim() === "") {
+    return defaultValue;
+  }
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new ServerConfigError(`${name} must be an integer from ${minimum} to ${maximum}`);
+  }
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new ServerConfigError(`${name} must be an integer from ${minimum} to ${maximum}`);
+  }
+  return value;
 }
 
 function validateLoopbackHost(raw: string | undefined): string {
@@ -108,6 +143,28 @@ function validateProviderConfiguration(env: ServerEnvironment): void {
           validateOrigin(origin);
         }
       }
+      if (record.rateLimit !== undefined) {
+        if (!record.rateLimit || typeof record.rateLimit !== "object") {
+          throw new ServerConfigError(
+            "WIDGET_PARTNERS_JSON partner rateLimit must be an object",
+          );
+        }
+        const rateLimit = record.rateLimit as Record<string, unknown>;
+        const values: Array<[string, unknown, number]> = [
+          ["windowMs", rateLimit.windowMs, 3_600_000],
+          ["max", rateLimit.max, 10_000],
+        ];
+        if (rateLimit.maxBuckets !== undefined) {
+          values.push(["maxBuckets", rateLimit.maxBuckets, 100_000]);
+        }
+        for (const [name, value, maximum] of values) {
+          if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > maximum) {
+            throw new ServerConfigError(
+              `WIDGET_PARTNERS_JSON partner rateLimit.${name} must be a positive bounded integer`,
+            );
+          }
+        }
+      }
     }
   }
 }
@@ -118,10 +175,87 @@ export function loadProxyServerConfig(env: ServerEnvironment = process.env): Pro
   const allowedOrigins = rawOrigins
     ? Array.from(new Set(rawOrigins.split(",").map((origin) => validateOrigin(origin.trim()))))
     : [];
+  const requestMs = parseBoundedInteger(
+    env.PROXY_REQUEST_TIMEOUT_MS,
+    "PROXY_REQUEST_TIMEOUT_MS",
+    DEFAULT_REQUEST_TIMEOUT_MS,
+    1_000,
+    120_000,
+  );
+  const headersMs = parseBoundedInteger(
+    env.PROXY_HEADERS_TIMEOUT_MS,
+    "PROXY_HEADERS_TIMEOUT_MS",
+    DEFAULT_HEADERS_TIMEOUT_MS,
+    1_000,
+    60_000,
+  );
+  if (headersMs > requestMs) {
+    throw new ServerConfigError(
+      "PROXY_HEADERS_TIMEOUT_MS cannot exceed PROXY_REQUEST_TIMEOUT_MS",
+    );
+  }
+
   return {
     host: validateLoopbackHost(env.PROXY_HOST),
     port: parsePort(env.PORT),
     allowedOrigins,
+    providerRateLimit: {
+      windowMs: parseBoundedInteger(
+        env.RATE_LIMIT_WINDOW_MS,
+        "RATE_LIMIT_WINDOW_MS",
+        DEFAULT_RATE_LIMIT_WINDOW_MS,
+        1_000,
+        3_600_000,
+      ),
+      max: parseBoundedInteger(
+        env.RATE_LIMIT_MAX,
+        "RATE_LIMIT_MAX",
+        DEFAULT_PROVIDER_RATE_LIMIT_MAX,
+        1,
+        10_000,
+      ),
+      maxBuckets: parseBoundedInteger(
+        env.RATE_LIMIT_MAX_BUCKETS,
+        "RATE_LIMIT_MAX_BUCKETS",
+        DEFAULT_RATE_LIMIT_MAX_BUCKETS,
+        1,
+        100_000,
+      ),
+    },
+    widgetRateLimit: {
+      windowMs: parseBoundedInteger(
+        env.WIDGET_RATE_LIMIT_WINDOW_MS,
+        "WIDGET_RATE_LIMIT_WINDOW_MS",
+        DEFAULT_RATE_LIMIT_WINDOW_MS,
+        1_000,
+        3_600_000,
+      ),
+      max: parseBoundedInteger(
+        env.WIDGET_RATE_LIMIT_MAX,
+        "WIDGET_RATE_LIMIT_MAX",
+        DEFAULT_WIDGET_RATE_LIMIT_MAX,
+        1,
+        10_000,
+      ),
+      maxBuckets: parseBoundedInteger(
+        env.WIDGET_RATE_LIMIT_MAX_BUCKETS,
+        "WIDGET_RATE_LIMIT_MAX_BUCKETS",
+        DEFAULT_RATE_LIMIT_MAX_BUCKETS,
+        1,
+        100_000,
+      ),
+    },
+    httpTimeouts: {
+      requestMs,
+      headersMs,
+      keepAliveMs: parseBoundedInteger(
+        env.PROXY_KEEP_ALIVE_TIMEOUT_MS,
+        "PROXY_KEEP_ALIVE_TIMEOUT_MS",
+        DEFAULT_KEEP_ALIVE_TIMEOUT_MS,
+        1_000,
+        60_000,
+      ),
+    },
   };
 }
 

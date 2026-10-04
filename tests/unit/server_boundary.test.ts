@@ -1,6 +1,7 @@
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
+import { loadProxyServerConfig } from "../../server/config";
 import { createProxyServer } from "../../server/index";
 
 const servers: ReturnType<typeof createProxyServer>[] = [];
@@ -21,11 +22,7 @@ afterEach(async () => {
 });
 
 async function startTestServer(allowedOrigins: string[] = []) {
-  const server = createProxyServer({
-    host: "127.0.0.1",
-    port: 0,
-    allowedOrigins,
-  });
+  const server = createProxyServer({ ...loadProxyServerConfig({}), port: 0, allowedOrigins });
   servers.push(server);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -34,6 +31,20 @@ async function startTestServer(allowedOrigins: string[] = []) {
 }
 
 describe("provider proxy HTTP boundary", () => {
+  it("applies finite incoming HTTP timeouts", () => {
+    const config = loadProxyServerConfig({
+      PROXY_REQUEST_TIMEOUT_MS: "20000",
+      PROXY_HEADERS_TIMEOUT_MS: "5000",
+      PROXY_KEEP_ALIVE_TIMEOUT_MS: "3000",
+    });
+    const server = createProxyServer(config);
+    servers.push(server);
+
+    expect(server.requestTimeout).toBe(20_000);
+    expect(server.headersTimeout).toBe(5_000);
+    expect(server.keepAliveTimeout).toBe(3_000);
+  });
+
   it("does not emit wildcard CORS or allow an unconfigured origin", async () => {
     const baseUrl = await startTestServer();
     const response = await fetch(`${baseUrl}/api/jobs/search`, {
