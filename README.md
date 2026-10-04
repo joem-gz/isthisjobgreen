@@ -76,6 +76,12 @@ npm run server:start
 - Network calls: Postcodes.io (home postcode only), local Adzuna proxy for search queries.
 - Job locations are resolved locally via the OS Open Names index.
 
+## Security
+
+- Keep API credentials server-side and follow the
+  [credential handling and rotation guide](docs/security/credential-handling.md).
+- Enable the repository's pinned Gitleaks pre-commit hook before contributing.
+
 ## Notes and caveats
 
 - Uses straight-line distance (haversine), not routing.
