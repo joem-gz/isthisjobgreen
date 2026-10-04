@@ -30,41 +30,29 @@ type SearchState = {
   savedSearches: SavedSearch[];
 };
 
-const form = document.querySelector<HTMLFormElement>("#search-form");
-const queryInput = document.querySelector<HTMLInputElement>("#search-query");
-const whereInput = document.querySelector<HTMLInputElement>("#search-where");
-const radiusInput = document.querySelector<HTMLInputElement>("#search-radius");
-const pageInput = document.querySelector<HTMLInputElement>("#search-page");
-const remoteOnlyInput = document.querySelector<HTMLInputElement>("#remote-only");
-const sortInput = document.querySelector<HTMLInputElement>("#sort-co2");
-const saveSearchButton = document.querySelector<HTMLButtonElement>("#save-search");
-const statusEl = document.querySelector<HTMLParagraphElement>("#status");
-const resultsEl = document.querySelector<HTMLUListElement>("#results");
-const savedSearchesEl = document.querySelector<HTMLUListElement>("#saved-searches");
-const savedJobsEl = document.querySelector<HTMLUListElement>("#saved-jobs");
-const homePostcodeEl = document.querySelector<HTMLSpanElement>("#home-postcode-value");
-const resultCountEl = document.querySelector<HTMLSpanElement>("#result-count");
-const attributionLink = document.querySelector<HTMLAnchorElement>("#search-attribution");
-
-if (
-  !form ||
-  !queryInput ||
-  !whereInput ||
-  !radiusInput ||
-  !pageInput ||
-  !remoteOnlyInput ||
-  !sortInput ||
-  !saveSearchButton ||
-  !statusEl ||
-  !resultsEl ||
-  !savedSearchesEl ||
-  !savedJobsEl ||
-  !homePostcodeEl ||
-  !resultCountEl ||
-  !attributionLink
-) {
-  throw new Error("Search page DOM missing required elements");
+function queryRequired<T extends Element>(selector: string): T {
+  const element = document.querySelector<T>(selector);
+  if (!element) {
+    throw new Error(`Search page DOM missing required element: ${selector}`);
+  }
+  return element;
 }
+
+const form = queryRequired<HTMLFormElement>("#search-form");
+const queryInput = queryRequired<HTMLInputElement>("#search-query");
+const whereInput = queryRequired<HTMLInputElement>("#search-where");
+const radiusInput = queryRequired<HTMLInputElement>("#search-radius");
+const pageInput = queryRequired<HTMLInputElement>("#search-page");
+const remoteOnlyInput = queryRequired<HTMLInputElement>("#remote-only");
+const sortInput = queryRequired<HTMLInputElement>("#sort-co2");
+const saveSearchButton = queryRequired<HTMLButtonElement>("#save-search");
+const statusEl = queryRequired<HTMLParagraphElement>("#status");
+const resultsEl = queryRequired<HTMLUListElement>("#results");
+const savedSearchesEl = queryRequired<HTMLUListElement>("#saved-searches");
+const savedJobsEl = queryRequired<HTMLUListElement>("#saved-jobs");
+const homePostcodeEl = queryRequired<HTMLSpanElement>("#home-postcode-value");
+const resultCountEl = queryRequired<HTMLSpanElement>("#result-count");
+const attributionLink = queryRequired<HTMLAnchorElement>("#search-attribution");
 
 setAttributionLink(attributionLink);
 

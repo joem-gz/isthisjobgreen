@@ -20,11 +20,11 @@ function installChromeStorageMock(store: Store) {
     }),
   };
 
-  (globalThis as typeof globalThis & { chrome: unknown }).chrome = {
+  vi.stubGlobal("chrome", {
     storage: {
       local,
     },
-  };
+  });
 }
 
 describe("geocodePostcode", () => {

@@ -25,11 +25,11 @@ function loadFixture(path: string): Document {
 }
 
 function setupChromeMock() {
-  (globalThis as typeof globalThis & { chrome?: unknown }).chrome = {
+  vi.stubGlobal("chrome", {
     runtime: {
-      lastError: null,
+      lastError: undefined,
     },
-  };
+  });
 }
 
 describe("scanAndAnnotate", () => {

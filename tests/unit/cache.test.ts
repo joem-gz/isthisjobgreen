@@ -3,15 +3,6 @@ import { getCachedGeocode, getMemoryCache, setCachedGeocode } from "../../src/st
 
 type Store = Record<string, unknown>;
 
-type ChromeMock = {
-  storage: {
-    local: {
-      get: (key: string | string[]) => Promise<Record<string, unknown>>;
-      set: (items: Record<string, unknown>) => Promise<void>;
-    };
-  };
-};
-
 function installChromeStorageMock(store: Store) {
   const local = {
     get: vi.fn(async (key: string | string[]) => {
@@ -29,12 +20,11 @@ function installChromeStorageMock(store: Store) {
     }),
   };
 
-  const globalWithChrome = globalThis as typeof globalThis & { chrome: ChromeMock };
-  globalWithChrome.chrome = {
+  vi.stubGlobal("chrome", {
     storage: {
       local,
     },
-  };
+  });
 
   return local;
 }

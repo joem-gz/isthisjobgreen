@@ -172,7 +172,7 @@ export async function fetchEmployerSignals(
 }
 
 export function classifyEmployerStatus(score?: number): EmployerSignalStatus {
-  if (!Number.isFinite(score)) {
+  if (typeof score !== "number" || !Number.isFinite(score)) {
     return "no_data";
   }
   if (score >= HIGH_CONFIDENCE_SCORE) {

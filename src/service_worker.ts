@@ -86,7 +86,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const response: ScoreResponseMessage = {
           type: "score_response",
           requestId: message.requestId,
-          result: { status: "unknown", reason: "Score failed" },
+          result: { status: "error", reason: "Score failed" },
         };
         sendResponse(response);
       });

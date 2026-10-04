@@ -31,8 +31,12 @@ jobs:
 
       - run: npm ci
       - run: npm run lint
+      - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npm run check:extension-package
+      - run: npm run build:widget
+      - run: npm run server:build
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
