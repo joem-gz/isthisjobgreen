@@ -1,6 +1,6 @@
 import { geocodePostcode } from "../../geocoding/postcodes";
 import { fetchProxyJobs } from "../../search/api";
-import { scoreJobs } from "../../search/scoring";
+import { scoreSearchJobsViaRuntime } from "../../scoring/runtime";
 import { ProxyJob, ScoredJob, SearchQuery } from "../../search/types";
 import { DEFAULT_SETTINGS, getSettings, Settings } from "../../storage/settings";
 import { setAttributionLink } from "../../ui/attribution";
@@ -114,11 +114,11 @@ async function refreshSavedSearches(): Promise<void> {
 
 async function refreshSavedJobs(): Promise<void> {
   state.savedJobs = await getSavedJobs();
-  const scored = scoreJobs(
+  const scored = await scoreSearchJobsViaRuntime(
     state.savedJobs,
     state.settings,
     state.homeLatLng,
-    { remoteOverride: false },
+    false,
   );
   renderSavedJobs(savedJobsEl, scored, async (id) => {
     await removeJob(id);
@@ -138,9 +138,12 @@ async function refreshSettings(): Promise<void> {
   }
 
   if (state.rawResults.length > 0) {
-    state.scoredResults = scoreJobs(state.rawResults, state.settings, state.homeLatLng, {
-      remoteOverride: state.lastQuery?.remoteOnly ?? false,
-    });
+    state.scoredResults = await scoreSearchJobsViaRuntime(
+      state.rawResults,
+      state.settings,
+      state.homeLatLng,
+      state.lastQuery?.remoteOnly ?? false,
+    );
     renderResults(resultsEl, state.scoredResults, sortInput.checked, handleSaveJob);
   }
 
@@ -155,9 +158,12 @@ async function runSearch(query: SearchQuery): Promise<void> {
   try {
     const response = await fetchProxyJobs(query);
     state.rawResults = response.results ?? [];
-    state.scoredResults = scoreJobs(state.rawResults, state.settings, state.homeLatLng, {
-      remoteOverride: query.remoteOnly,
-    });
+    state.scoredResults = await scoreSearchJobsViaRuntime(
+      state.rawResults,
+      state.settings,
+      state.homeLatLng,
+      query.remoteOnly,
+    );
     renderResults(resultsEl, state.scoredResults, sortInput.checked, handleSaveJob);
     setResultCount(response.count ?? state.rawResults.length);
     setStatus("Search complete.");

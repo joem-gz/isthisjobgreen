@@ -8,7 +8,7 @@ import {
   extractReedModalJobPosting,
   findReedModal,
 } from "../../sites/reed/job_details_modal";
-import { scoreLocation } from "../../scoring/location_scoring";
+import { scoreLocationViaRuntime } from "../../scoring/runtime";
 import { ScoreBreakdown, ScoreResult } from "../../scoring/types";
 import { getSettings, Settings } from "../../storage/settings";
 import { noopTelemetry, Telemetry } from "../../telemetry";
@@ -699,7 +699,7 @@ export async function initPageScore(deps: PageScoreDependencies = {}): Promise<v
   const doc = deps.doc ?? document;
   const telemetry = deps.telemetry ?? noopTelemetry;
   const getSettingsFn = deps.getSettings ?? getSettings;
-  const scoreLocationFn = deps.scoreLocation ?? scoreLocation;
+  const scoreLocationFn = deps.scoreLocation ?? scoreLocationViaRuntime;
   const fetchEmployerSignalsFn =
     deps.fetchEmployerSignals ??
     ((name, hintLocation, override) =>
